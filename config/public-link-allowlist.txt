@@ -1,0 +1,2 @@
+https://developers.openai.com/
+https://github.com/acoz-labs/intent-to-release

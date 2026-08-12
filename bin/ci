@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ ! -x bin/validate-solution-plans ]] || bin/validate-solution-plans
+bin/validate-product
+if [[ -x bin/build-public-candidate ]]; then
+  python3 -m py_compile bin/build-public-candidate bin/capture-publication-evidence bin/capture-target-evidence bin/run-forward-evidence bin/scan-public-refs bin/validate-product bin/verify-accepted-receipt-record bin/verify-release-evidence
+  bash -n bin/identify-artifact bin/preflight-publication bin/verify-publication bin/run-official-validators
+  python3 -m unittest discover -s tests -v
+else
+  python3 -m unittest tests.test_public_package -v
+fi
+
+if [[ -f package.json ]]; then
+  if command -v npm >/dev/null 2>&1; then
+    npm test
+  else
+    echo "package.json exists but npm is unavailable." >&2
+    exit 1
+  fi
+fi
+
+if [[ -f Gemfile ]]; then
+  if command -v bundle >/dev/null 2>&1; then
+    bundle exec rubocop || true
+    if [[ -f bin/rails ]]; then
+      bundle exec rails test
+    fi
+  else
+    echo "Gemfile exists but bundle is unavailable." >&2
+    exit 1
+  fi
+fi
+
+echo "bin/ci completed. Customize this script for project-specific checks."

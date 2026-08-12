@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Deterministic structural and passive-boundary validation."""
+from pathlib import Path
+import argparse, json, re, sys
+
+ROOT = Path(__file__).resolve().parent.parent
+PLUGIN = ROOT / "plugins/intent-to-release"
+parser=argparse.ArgumentParser(); parser.add_argument("--denylist",type=Path); args=parser.parse_args()
+errors = []
+def require(ok, message):
+    if not ok: errors.append(message)
+
+market = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+manifest = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
+require(manifest.get("name") == "intent-to-release", "manifest name must match plugin directory")
+require(manifest.get("version") == "0.1.0", "manifest version must be 0.1.0")
+require(len(market.get("plugins", [])) == 1, "marketplace must contain exactly one plugin")
+require(market["plugins"][0]["source"]["path"] == "./plugins/intent-to-release", "marketplace source must be local and relative")
+skills = sorted((PLUGIN / "skills").glob("*/SKILL.md"))
+names = []
+for skill in skills:
+    text = skill.read_text()
+    match = re.search(r"^name: ([a-z0-9-]+)$", text, re.M)
+    require(bool(match), f"{skill}: missing valid name")
+    if match: names.append(match.group(1))
+    require("[TODO" not in text, f"{skill}: placeholder remains")
+require(names == ["intent-to-release-deliver", "intent-to-release-design", "intent-to-release-discover"], "exactly three namespaced skills are required")
+
+for path in sorted(PLUGIN.rglob("*")):
+    if path.is_file(): require(path.suffix in {".md", ".json", ".txt"}, f"active payload forbidden: {path.relative_to(ROOT)}")
+for forbidden in (".mcp.json", ".app.json", "hooks", "scripts"):
+    require(not (PLUGIN / forbidden).exists(), f"passive boundary forbids {forbidden}")
+
+method = (PLUGIN / "references/method.md").read_text()
+require(method.count("## Phase ") == 3, "method must define exactly three phases")
+require(method.count("## Product Authority Gate ") == 2, "method must define exactly two product-authority gates")
+for template in ("product-brief.md", "reconciliation.md", "release.md"):
+    require((PLUGIN / "assets/templates" / template).is_file(), f"missing template {template}")
+require((PLUGIN / "assets/templates/solution-plan/README.md").is_file(), "missing solution-plan template")
+
+deny=[]
+if args.denylist:
+    if not args.denylist.is_file(): errors.append("candidate denylist missing")
+    else: deny=[x for x in args.denylist.read_text().splitlines() if x.strip() and not x.lstrip().startswith("#")]
+    if not deny: errors.append("candidate denylist has no active rules")
+generic=[re.compile(r"/(?:Users|home)/[^/\s]+/"),re.compile(r"(?i)(?:password|api[_-]?key|token)\s*[:=]\s*\S+")]
+public_files = [ROOT/"README.md", ROOT/"SECURITY.md", ROOT/"LICENSE"] + [p for p in PLUGIN.rglob("*") if p.is_file()]
+for path in public_files:
+    text = path.read_text(errors="replace")
+    if any(rule.search(text) for rule in generic): errors.append(f"privacy term in {path.relative_to(ROOT)}: <redacted rule>")
+    for term in deny:
+        if term.casefold() in text.casefold(): errors.append(f"privacy term in {path.relative_to(ROOT)}: <redacted rule>")
+    for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", text):
+        target = target.split("#", 1)[0]
+        if not target or target.startswith(("http://", "https://", "mailto:")): continue
+        require((path.parent / target).exists(), f"broken relative link in {path.relative_to(ROOT)}")
+
+if errors:
+    print("product validation failed:", file=sys.stderr)
+    for error in sorted(set(errors)): print(f"- {error}", file=sys.stderr)
+    sys.exit(1)
+print("product validation passed")

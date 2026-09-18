@@ -1,10 +1,25 @@
 {
   "delivery_profile": "artifact",
   "validation": [
+    "bin/sdlc check",
+    "python3 -m unittest discover -s tests -p 'test_sdlc*.py'",
     "bin/ci"
   ],
   "required_checks": [
     "ci",
     "sdlc"
-  ]
+  ],
+  "verification_mode": "local",
+  "acceptance_criteria": [
+    "issue-criteria",
+    "retained-public-package",
+    "privacy-and-installation"
+  ],
+  "release_criteria": [
+    "published-same-bytes",
+    "anonymous-installation",
+    "immutable-tags"
+  ],
+  "delivery_runbook": "docs/delivery.md",
+  "release_authority_repository": "acoz-labs/intent-to-release-source"
 }

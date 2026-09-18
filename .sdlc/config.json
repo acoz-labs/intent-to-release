@@ -4,6 +4,7 @@
     "bin/ci"
   ],
   "required_checks": [
+    "ci",
     "sdlc"
   ]
 }
